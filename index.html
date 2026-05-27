@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ACE — Loyalty Journeys</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════
+   DESIGN TOKENS & RESET
+══════════════════════════════════════════════════ */
+:root {
+  --accent: #CD7F32;
+  --glow:   #FF9A3C;
+  --bg:     #06060f;
+  --surface: rgba(255,255,255,0.04);
+  --border:  rgba(255,255,255,0.08);
+  --text:    #ffffff;
+  --muted:   #666;
+}
+*,*::before,*::after { margin:0; padding:0; box-sizing:border-box; }
+html,body { height:100%; overflow:hidden; }
+body {
+  background: var(--bg);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient tier glow backdrop */
+body::before {
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(ellipse 50% 40% at 15% 60%, var(--accent)07, transparent),
+    radial-gradient(ellipse 40% 35% at 85% 25%, var(--glow)05, transparent);
+  transition: background 0.8s ease;
+}
+
+/* ══════════════════════════════════════════════════
+   STAR CANVAS
+══════════════════════════════════════════════════ */
+#bg-canvas { position:fixed; inset:0; z-index:0; pointer-events:none; }
+
+/* ══════════════════════════════════════════════════
+   HEADER
+══════════════════════════════════════════════════ */
+#hdr {
+  position: fixed; top:0; left:0; right:0; height:60px; z-index:200;
+  display: flex; align-items:center; padding:0 20px; gap:14px;
+  background: rgba(6,6,15,0.85);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  border-bottom: 1px solid var(--border);
+  transition: border-color 0.5s;
+}
+
+.logo {
+  font-size:17px; font-weight:800; letter-spacing:4px;
+  color: var(--accent); text-shadow: 0 0 18px var(--glow);
+  flex-shrink:0; transition: color .5s, text-shadow .5s;
+  text-transform:uppercase;
+}
+
+/* Journey progress dots */
+.j-dots { display:flex; gap:5px; align-items:center; flex-shrink:0; }
+.j-dot {
+  height:4px; width:18px; border-radius:2px;
+  background: rgba(255,255,255,.12); transition: all .5s;
+}
+.j-dot.active { background: var(--accent); box-shadow:0 0 8px var(--glow); width:28px; }
+.j-dot.done   { background: var(--accent); opacity:.35; }
+
+/* XP bar */
+.hdr-xp { flex:1; min-width:0; }
+.hdr-xp-row {
+  display:flex; justify-content:space-between;
+  font-size:10px; color:var(--muted); margin-bottom:4px;
+  transition: color .4s;
+}
+.hdr-xp-row .cur { color:var(--accent); font-weight:600; font-size:11px; transition:color .5s; }
+.xp-track {
+  height:3px; background:rgba(255,255,255,.06);
+  border-radius:2px; overflow:hidden;
+}
+.xp-fill {
+  height:100%; width:0%;
+  background: linear-gradient(90deg, var(--accent), var(--glow));
+  border-radius:2px;
+  box-shadow: 0 0 6px var(--glow);
+  transition: width .7s cubic-bezier(.4,0,.2,1), background .5s;
+}
+
+/* Player badge */
+.player-badge {
+  display:flex; align-items:center; gap:8px; flex-shrink:0;
+  padding:5px 10px; border-radius:8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transition: border-color .5s;
+}
+.p-avatar { font-size:16px; }
+.p-info { line-height:1.3; }
+.p-name { font-size:11px; font-weight:600; }
+.p-tier { font-size:10px; color:var(--accent); font-weight:500; transition:color .5s; }
+
+/* Overall progress bar (top strip) */
+#progress-strip {
+  position:fixed; top:0; left:0; z-index:300; height:2px;
+  background: linear-gradient(90deg, var(--accent), var(--glow));
+  box-shadow: 0 0 8px var(--glow);
+  transition: width .8s cubic-bezier(.4,0,.2,1), background .5s;
+  width:0%;
+}
+
+/* ══════════════════════════════════════════════════
+   APP SHELL
+══════════════════════════════════════════════════ */
+#app {
+  position:relative; height:100vh;
+  display:flex; flex-direction:column;
+  z-index:1;
+}
+
+/* ══════════════════════════════════════════════════
+   JOURNEY VIEW
+══════════════════════════════════════════════════ */
+#journey-view {
+  flex:1; margin-top:60px;
+  display:flex; flex-direction:column;
+  position:relative; overflow:hidden;
+}
+
+/* Journey hero */
+#hero {
+  padding:14px 24px 8px;
+  text-align:center; flex-shrink:0; position:relative; z-index:5;
+}
+
+.j-eyebrow {
+  font-size:9px; font-weight:700; letter-spacing:5px;
+  color:var(--accent); text-transform:uppercase; margin-bottom:5px;
+  transition:color .5s;
+}
+
+.j-from-to {
+  display:flex; align-items:center; justify-content:center; gap:10px;
+  font-size:13px; font-weight:600; margin-bottom:4px;
+  color:rgba(255,255,255,.5);
+}
+.j-from-to .tier-pill {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 10px; border-radius:20px;
+  border:1px solid var(--accent)44;
+  background:var(--accent)0e;
+  color:var(--accent); font-size:12px; font-weight:700;
+  transition: all .5s;
+}
+.j-from-to .arrow { color:var(--muted); font-size:14px; }
+.j-from-to .goal-pill {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 10px; border-radius:20px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.04);
+  color:rgba(255,255,255,.4); font-size:12px; font-weight:700;
+  transition: all .5s;
+}
+.j-from-to .goal-pill.unlocked {
+  border-color:var(--accent)44; background:var(--accent)0e; color:var(--accent);
+}
+
+.j-title {
+  font-size:21px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--glow) 50%, #fff 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  background-clip:text;
+  transition: all .5s; margin-bottom:2px;
+}
+.j-subtitle { font-size:11px; color:var(--muted); font-weight:400; letter-spacing:.5px; }
+
+/* Node step pills row */
+.j-steps {
+  display:flex; align-items:center; justify-content:center;
+  gap:4px; margin-top:10px; flex-wrap:nowrap;
+}
+.step-pip {
+  height:3px; border-radius:2px;
+  background: rgba(255,255,255,.12);
+  transition: all .4s;
+  flex:1; max-width:32px;
+}
+.step-pip.done   { background:var(--accent); opacity:.6; }
+.step-pip.active { background: var(--glow); box-shadow:0 0 6px var(--glow); }
+
+/* ══════════════════════════════════════════════════
+   MAP AREA
+══════════════════════════════════════════════════ */
+#map-area {
+  flex:1; position:relative; overflow:hidden;
+  display:flex; align-items:stretch; justify-content:center;
+}
+
+#map-glow {
+  position:absolute; inset:0; pointer-events:none; z-index:0;
+  transition: background .8s;
+}
+
+#map-svg {
+  position:absolute; inset:0; width:100%; height:100%;
+  overflow:visible; z-index:2; pointer-events:none;
+}
+
+/* ══════════════════════════════════════════════════
+   LEVEL NODES
+══════════════════════════════════════════════════ */
+.lnode {
+  position:absolute; transform:translate(-50%,-50%);
+  z-index:10; display:flex; flex-direction:column;
+  align-items:center; gap:5px;
+  transition:transform .2s;
+}
+.lnode:hover { transform:translate(-50%,-50%) scale(1.06); }
+
+.gem-wrap { position:relative; display:flex; align-items:center; justify-content:center; }
+.main-node .gem-wrap,
+.goal-node .gem-wrap { width:66px; height:66px; }
+.sub-node  .gem-wrap { width:46px; height:46px; }
+
+.gem {
+  width:100%; height:100%;
+  clip-path:polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%);
+  display:flex; align-items:center; justify-content:center;
+  transition: all .35s cubic-bezier(.4,0,.2,1);
+}
+
+.gem.locked   { background:rgba(22,22,38,.85); }
+.gem.done     { background:linear-gradient(135deg, var(--accent)77, var(--accent)cc); }
+.gem.active   {
+  background:linear-gradient(135deg, var(--accent), var(--glow));
+  box-shadow: 0 0 18px var(--glow), 0 0 36px var(--glow)44;
+}
+.gem.goal-locked {
+  background:rgba(18,18,32,.9);
+  outline:1px dashed rgba(255,255,255,.14);
+  outline-offset:2px;
+}
+.gem.goal-done {
+  background:linear-gradient(135deg, var(--accent), var(--glow), #ffffffcc);
+  box-shadow: 0 0 28px var(--glow), 0 0 56px var(--glow)55;
+}
+
+.gem-icon { font-size:20px; position:relative; z-index:2; pointer-events:none; }
+.gem-lock-icon { font-size:18px; opacity:.5; pointer-events:none; }
+
+/* Pulsing ring on current node */
+.pulse-ring {
+  position:absolute; inset:-7px; border-radius:50%;
+  border:1.5px solid var(--accent);
+  animation:ringAnim 2s ease-in-out infinite;
+  pointer-events:none; z-index:3;
+  transition:border-color .5s;
+}
+@keyframes ringAnim {
+  0%,100%{ opacity:.3; transform:scale(.92); }
+  50%    { opacity:1;  transform:scale(1.06); }
+}
+
+/* Second outer ring */
+.pulse-ring-2 {
+  position:absolute; inset:-14px; border-radius:50%;
+  border:1px solid var(--accent)44;
+  animation:ringAnim2 2s ease-in-out infinite;
+  pointer-events:none; z-index:3;
+  transition:border-color .5s;
+}
+@keyframes ringAnim2 {
+  0%,100%{ opacity:.15; transform:scale(.9); }
+  50%    { opacity:.5;  transform:scale(1.08); }
+}
+
+/* Badges */
+.check-badge {
+  position:absolute; top:-3px; right:-3px;
+  width:15px; height:15px; border-radius:50%;
+  background:#22c55e; border:1.5px solid var(--bg);
+  display:flex; align-items:center; justify-content:center;
+  font-size:8px; font-weight:800; color:#fff; z-index:20;
+}
+.prize-badge {
+  position:absolute; top:-3px; right:-3px;
+  width:15px; height:15px; border-radius:50%;
+  background:linear-gradient(135deg,#5B1A80,#8B2FAB);
+  border:1.5px solid var(--bg);
+  display:flex; align-items:center; justify-content:center;
+  font-size:8px; font-weight:800; color:#fff; z-index:20;
+}
+
+/* Node labels */
+.node-name {
+  font-size:10px; font-weight:600; color:rgba(255,255,255,.45);
+  white-space:nowrap; letter-spacing:.3px; text-align:center;
+  transition:color .3s;
+}
+.lnode.active-node .node-name { color:var(--accent); font-weight:700; }
+.lnode.goal-node   .node-name { font-size:11px; font-weight:700; color:rgba(255,255,255,.35); }
+.lnode.goal-node.reached .node-name { color:var(--glow); }
+
+.node-xp {
+  font-size:9px; font-weight:500; color:rgba(255,255,255,.22);
+  letter-spacing:.3px;
+}
+.lnode.active-node .node-xp { color:var(--glow)aa; }
+
+/* YOU indicator */
+.you-badge {
+  position:absolute; top:-22px; left:50%; transform:translateX(-50%);
+  font-size:8px; font-weight:800; letter-spacing:2px; text-transform:uppercase;
+  color:var(--accent); white-space:nowrap;
+  transition:color .5s;
+}
+
+/* ══════════════════════════════════════════════════
+   FOOTER
+══════════════════════════════════════════════════ */
+#footer {
+  padding:12px 20px 18px; flex-shrink:0;
+  background:linear-gradient(0deg, rgba(6,6,15,1) 75%, transparent);
+  position:relative; z-index:20;
+}
+
+.footer-inner {
+  display:flex; align-items:center; gap:12px; max-width:440px; margin:0 auto;
+}
+
+.xp-counter { flex-shrink:0; text-align:left; }
+.xp-counter-val {
+  font-size:22px; font-weight:800; line-height:1;
+  color:var(--text);
+}
+.xp-counter-val span { font-size:12px; color:var(--muted); font-weight:400; margin-left:2px; }
+.xp-counter-sub { font-size:9px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; margin-top:1px; }
+
+.earn-btn {
+  flex:1; height:52px; border:none; border-radius:13px; cursor:pointer;
+  font-family:'Space Grotesk',sans-serif;
+  font-size:14px; font-weight:800; letter-spacing:1px;
+  text-transform:uppercase; color:#000;
+  background:linear-gradient(135deg, var(--accent), var(--glow));
+  transition: all .25s; position:relative; overflow:hidden;
+}
+.earn-btn::after {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);
+  transform:translateX(-100%);
+  animation:shine 3.5s ease-in-out infinite;
+}
+@keyframes shine{0%{transform:translateX(-100%)}25%,100%{transform:translateX(200%)}}
+.earn-btn:hover { transform:translateY(-2px); box-shadow:0 8px 28px var(--glow)44; }
+.earn-btn:active { transform:translateY(0); }
+.earn-btn-label { display:block; line-height:1.1; }
+.earn-btn-sub { font-size:9px; opacity:.65; font-weight:400; letter-spacing:2px; }
+
+/* ══════════════════════════════════════════════════
+   FLOATING XP TEXT
+══════════════════════════════════════════════════ */
+.xp-float {
+  position:fixed; font-size:15px; font-weight:700;
+  color:var(--glow); text-shadow:0 0 10px var(--glow);
+  pointer-events:none; z-index:999;
+  animation:floatUp 1.3s ease-out forwards;
+}
+@keyframes floatUp{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-65px)}}
+
+/* ══════════════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════════════ */
+#toast {
+  position:fixed; top:72px; left:50%;
+  transform:translateX(-50%) translateY(-8px);
+  background:rgba(6,6,15,.94); backdrop-filter:blur(20px);
+  border:1px solid var(--accent)55; border-radius:10px;
+  padding:9px 18px; text-align:center; z-index:500;
+  opacity:0; transition:all .3s; pointer-events:none; white-space:nowrap;
+}
+#toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.toast-main { font-size:13px; font-weight:700; color:var(--accent); transition:color .5s; }
+.toast-sub  { font-size:10px; color:var(--muted); margin-top:2px; }
+
+/* ══════════════════════════════════════════════════
+   PRIZE MODAL
+══════════════════════════════════════════════════ */
+#prize-modal {
+  position:fixed; inset:0; z-index:1000;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.87); backdrop-filter:blur(18px);
+  opacity:0; pointer-events:none; transition:opacity .3s;
+}
+#prize-modal.open { opacity:1; pointer-events:all; }
+
+.prize-card {
+  background:rgba(8,8,20,.97);
+  border:1px solid rgba(255,255,255,.09);
+  border-radius:20px; padding:30px 28px;
+  text-align:center; max-width:400px; width:90%;
+  box-shadow:
+    0 0 0 1px var(--accent)1a,
+    0 0 50px var(--glow)12,
+    0 40px 80px rgba(0,0,0,.6);
+  position:relative; overflow:hidden;
+}
+.prize-card::before {
+  content:''; position:absolute; inset:0; border-radius:20px; pointer-events:none;
+  background:linear-gradient(135deg, var(--accent)06, transparent 50%, var(--accent)04);
+}
+
+.p-eyebrow { font-size:9px; letter-spacing:4px; text-transform:uppercase; color:var(--accent); margin-bottom:6px; transition:color .5s; }
+.p-title   { font-size:22px; font-weight:800; letter-spacing:1px; margin-bottom:3px; }
+.p-level   { font-size:12px; color:var(--muted); margin-bottom:18px; }
+
+/* ── Chest ── */
+#chest-zone { margin-bottom:6px; }
+.chest-3d {
+  width:140px; height:140px; position:relative; margin:0 auto;
+  cursor:pointer; perspective:280px;
+}
+.c-body {
+  position:absolute; bottom:0; left:50%; transform:translateX(-50%);
+  width:108px; height:62px;
+  background:linear-gradient(180deg,#7A5200,#4A3000);
+  border:2px solid var(--accent); border-radius:3px 3px 7px 7px;
+  display:flex; align-items:center; justify-content:center;
+  transition:border-color .5s;
+}
+.c-lock { width:18px; height:18px; background:var(--accent); border-radius:50% 50% 3px 3px; transition:background .5s; }
+.c-lid {
+  position:absolute; bottom:61px; left:50%;
+  transform:translateX(-50%) rotateX(0deg);
+  transform-origin:50% 100%;
+  width:113px; height:40px;
+  background:linear-gradient(180deg,#9A6500,#6A4500);
+  border:2px solid var(--accent); border-bottom:none;
+  border-radius:7px 7px 0 0;
+  transition:transform .65s cubic-bezier(.4,0,.2,1), border-color .5s;
+}
+.c-lid.open { transform:translateX(-50%) rotateX(-120deg); }
+.c-glow {
+  position:absolute; bottom:48px; left:50%; transform:translateX(-50%);
+  width:80px; height:80px; border-radius:50%;
+  opacity:0; transition:opacity .35s; pointer-events:none;
+}
+.c-glow.show { opacity:1; }
+.chest-tap { font-size:10px; color:var(--muted); margin-top:3px; }
+
+/* ── Scratch ── */
+#scratch-zone { display:none; margin-bottom:6px; }
+#scratch-area {
+  position:relative; width:100%; max-width:280px; height:120px;
+  margin:0 auto; border-radius:11px; overflow:hidden; cursor:crosshair;
+  border:1px solid var(--accent)33;
+}
+#scratch-under {
+  position:absolute; inset:0; z-index:1;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:linear-gradient(135deg,#0c0020,#1a0040);
+}
+#scratch-canvas { position:absolute; inset:0; z-index:2; border-radius:10px; }
+.scratch-tap { font-size:10px; color:var(--muted); margin-top:5px; }
+
+/* Prize result */
+.p-result {
+  font-size:25px; font-weight:800; color:var(--accent);
+  text-shadow:0 0 18px var(--glow); margin:14px 0 4px;
+  opacity:0; transform:translateY(6px); transition:all .45s;
+}
+.p-result.show { opacity:1; transform:translateY(0); }
+.p-result-sub { font-size:11px; color:var(--muted); margin-bottom:16px; }
+
+.claim-btn {
+  display:none; background:linear-gradient(135deg, var(--accent), var(--glow));
+  border:none; border-radius:10px; cursor:pointer;
+  font-family:'Space Grotesk',sans-serif;
+  font-size:13px; font-weight:800; letter-spacing:1px; text-transform:uppercase;
+  color:#000; padding:11px 28px; transition:all .2s;
+}
+.claim-btn:hover { transform:translateY(-2px); box-shadow:0 6px 18px var(--glow)44; }
+.claim-btn.show { display:inline-flex; align-items:center; gap:6px; }
+
+/* ══════════════════════════════════════════════════
+   JOURNEY COMPLETE OVERLAY
+══════════════════════════════════════════════════ */
+#jc-overlay {
+  position:fixed; inset:0; z-index:2000;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  background:rgba(6,6,15,.96); backdrop-filter:blur(28px);
+  opacity:0; pointer-events:none; transition:opacity .5s;
+  text-align:center; padding:32px 24px;
+}
+#jc-overlay.open { opacity:1; pointer-events:all; }
+
+.jc-icon {
+  font-size:76px; margin-bottom:14px;
+  animation:iconPop .55s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes iconPop{from{transform:scale(0) rotate(-15deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
+
+.jc-eyebrow { font-size:9px; letter-spacing:5px; text-transform:uppercase; color:var(--accent); margin-bottom:8px; transition:color .5s; }
+.jc-heading {
+  font-size:34px; font-weight:800; text-transform:uppercase; letter-spacing:2px;
+  background:linear-gradient(135deg, var(--accent), var(--glow), #fff);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  margin-bottom:7px; transition:all .5s;
+}
+.jc-sub { font-size:14px; color:rgba(255,255,255,.5); margin-bottom:26px; font-weight:400; }
+
+.jc-stats { display:flex; gap:28px; justify-content:center; margin-bottom:28px; }
+.jc-stat-val { font-size:28px; font-weight:800; color:var(--accent); transition:color .5s; }
+.jc-stat-lbl { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); }
+
+.jc-cta {
+  background:linear-gradient(135deg, var(--accent), var(--glow));
+  border:none; border-radius:13px; cursor:pointer;
+  font-family:'Space Grotesk',sans-serif; font-size:15px; font-weight:800;
+  letter-spacing:1px; text-transform:uppercase; color:#000;
+  padding:15px 34px; transition:all .2s; position:relative; overflow:hidden;
+}
+.jc-cta::after {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.25),transparent);
+  transform:translateX(-100%); animation:shine 3s ease-in-out infinite;
+}
+.jc-cta:hover { transform:translateY(-3px); box-shadow:0 12px 30px var(--glow)44; }
+.jc-cta-sub { font-size:9px; opacity:.6; font-weight:400; letter-spacing:2px; margin-top:1px; }
+
+.jc-restart {
+  margin-top:14px; background:transparent;
+  border:1px solid rgba(255,255,255,.1); color:rgba(255,255,255,.3);
+  padding:8px 20px; border-radius:8px; cursor:pointer;
+  font-family:'Space Grotesk',sans-serif; font-size:12px;
+  transition:all .2s;
+}
+.jc-restart:hover { border-color:var(--accent)66; color:var(--accent); }
+
+/* ══════════════════════════════════════════════════
+   PARTICLES
+══════════════════════════════════════════════════ */
+#particles { position:fixed; inset:0; pointer-events:none; z-index:50; overflow:hidden; }
+
+/* ══════════════════════════════════════════════════
+   TRANSITIONS
+══════════════════════════════════════════════════ */
+.slide-in { animation:slideIn .5s cubic-bezier(.4,0,.2,1) both; }
+@keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<div id="particles"></div>
+<div id="progress-strip"></div>
+
+<!-- ── HEADER ── -->
+<div id="hdr">
+  <div class="logo">⚜ ACE</div>
+  <div class="j-dots" id="j-dots">
+    <div class="j-dot active" id="jd0"></div>
+    <div class="j-dot"        id="jd1"></div>
+    <div class="j-dot"        id="jd2"></div>
+    <div class="j-dot"        id="jd3"></div>
+  </div>
+  <div class="hdr-xp">
+    <div class="hdr-xp-row">
+      <span class="cur" id="h-curlv">Bronze</span>
+      <span id="h-nxt">50 XP to Bronze 1</span>
+    </div>
+    <div class="xp-track"><div class="xp-fill" id="xp-fill"></div></div>
+  </div>
+  <div class="player-badge">
+    <div class="p-avatar">🎭</div>
+    <div class="p-info">
+      <div class="p-name">Demo Player</div>
+      <div class="p-tier" id="h-tier">Bronze</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MAIN APP ── -->
+<div id="app">
+  <div id="journey-view">
+
+    <!-- Hero -->
+    <div id="hero">
+      <div class="j-eyebrow" id="j-eyebrow">Journey 1 of 4</div>
+      <div class="j-from-to">
+        <div class="tier-pill" id="from-pill">🥉 Bronze</div>
+        <div class="arrow">→</div>
+        <div class="goal-pill" id="to-pill">🥈 Silver</div>
+      </div>
+      <div class="j-title" id="j-title">THE BRONZE PATH</div>
+      <div class="j-subtitle" id="j-subtitle">Begin your ascent</div>
+      <div class="j-steps" id="j-steps"></div>
+    </div>
+
+    <!-- Map -->
+    <div id="map-area">
+      <div id="map-glow"></div>
+      <svg id="map-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      <!-- nodes injected -->
+    </div>
+
+    <!-- Footer -->
+    <div id="footer">
+      <div class="footer-inner">
+        <div class="xp-counter">
+          <div class="xp-counter-val" id="ft-xp">0 <span>XP</span></div>
+          <div class="xp-counter-sub">Total earned</div>
+        </div>
+        <button class="earn-btn" id="earn-btn" onclick="earnXP()">
+          <span class="earn-btn-label">🎲 Earn XP</span>
+          <span class="earn-btn-sub">+<span id="earn-amt">28</span> XP PER PLAY</span>
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── TOAST ── -->
+<div id="toast">
+  <div class="toast-main" id="t-main">Bronze 1 Reached!</div>
+  <div class="toast-sub"  id="t-sub">Mystery prize unlocked 🎁</div>
+</div>
+
+<!-- ── PRIZE MODAL ── -->
+<div id="prize-modal">
+  <div class="prize-card">
+    <div class="p-eyebrow">Mystery Prize</div>
+    <div class="p-title"  id="p-title">🎁</div>
+    <div class="p-level"  id="p-level">You've reached a new level!</div>
+
+    <!-- Chest -->
+    <div id="chest-zone">
+      <div class="chest-3d" onclick="openChest()">
+        <div class="c-glow" id="c-glow"></div>
+        <div class="c-lid"  id="c-lid"></div>
+        <div class="c-body"><div class="c-lock"></div></div>
+      </div>
+      <div class="chest-tap">👆 Tap to reveal your prize</div>
+    </div>
+
+    <!-- Scratch -->
+    <div id="scratch-zone">
+      <div id="scratch-area">
+        <div id="scratch-under">
+          <div id="s-icon" style="font-size:24px;"></div>
+          <div id="s-prize" style="font-size:18px;font-weight:800;color:var(--glow);margin-top:3px;"></div>
+        </div>
+        <canvas id="scratch-canvas"></canvas>
+      </div>
+      <div class="scratch-tap">✏️ Scratch to reveal</div>
+    </div>
+
+    <div class="p-result" id="p-result"></div>
+    <div class="p-result-sub" id="p-result-sub"></div>
+    <button class="claim-btn" id="p-claim" onclick="closePrize()">✨ Claim Prize</button>
+  </div>
+</div>
+
+<!-- ── JOURNEY COMPLETE ── -->
+<div id="jc-overlay">
+  <div class="jc-icon"    id="jc-icon">🥈</div>
+  <div class="jc-eyebrow">Journey Complete</div>
+  <div class="jc-heading" id="jc-heading">SILVER UNLOCKED</div>
+  <div class="jc-sub"     id="jc-sub">You've ascended to Silver tier!</div>
+  <div class="jc-stats">
+    <div class="jc-stat">
+      <div class="jc-stat-val" id="jc-xp">0</div>
+      <div class="jc-stat-lbl">XP Earned</div>
+    </div>
+    <div class="jc-stat">
+      <div class="jc-stat-val" id="jc-prizes">4</div>
+      <div class="jc-stat-lbl">Prizes Won</div>
+    </div>
+  </div>
+  <button class="jc-cta" id="jc-cta" onclick="nextJourney()">
+    <span class="jc-cta-label">Begin Journey <span id="jc-next">2</span> →</span>
+    <span class="jc-cta-sub">CONTINUE YOUR ASCENT</span>
+  </button>
+  <div id="jc-final" style="display:none;text-align:center;">
+    <div style="font-size:13px;color:rgba(255,255,255,.45);margin-bottom:8px;">
+      🎉 You've reached Sapphire — Demo Complete
+    </div>
+  </div>
+  <button class="jc-restart" onclick="restart()">↩ Restart Demo</button>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════
+   DATA
+══════════════════════════════════════════════ */
+const TIERS = {
+  bronze:  { icon:'🥉', color:'#CD7F32', glow:'#FF9A3C', label:'Bronze',
+    prizes:['10 Free Spins','$2 Bonus Cash','1.5× XP Boost','5 Bonus Spins'] },
+  silver:  { icon:'🥈', color:'#B0B0C8', glow:'#D8D8F0', label:'Silver',
+    prizes:['25 Free Spins','$5 Bonus Cash','2× XP Boost (2hr)','Silver Loot Box'] },
+  gold:    { icon:'🥇', color:'#FFD700', glow:'#FFF060', label:'Gold',
+    prizes:['50 Free Spins','$10 Bonus Cash','3× XP Boost (2hr)','Gold Jackpot Ticket'] },
+  platinum:{ icon:'💎', color:'#D8D6D4', glow:'#FFFFFF', label:'Platinum',
+    prizes:['75 Free Spins','$20 Bonus Cash','5% Weekend Cashback','Platinum Gift Pack'] },
+  sapphire:{ icon:'🔷', color:'#4D94FF', glow:'#99CAFF', label:'Sapphire',
+    prizes:['100 Free Spins','$35 Bonus Cash','Daily Reload Bonus','Sapphire Mystery Box'] },
+};
+
+const JOURNEYS = [
+  { id:1, eyebrow:'Journey 1 of 4', title:'THE BRONZE PATH',   sub:'Begin your ascent',     earn:28,
+    nodes:[
+      {n:'Bronze',   xp:0,   tier:'bronze', main:true },
+      {n:'Bronze 1', xp:50,  tier:'bronze', prize:true},
+      {n:'Bronze 2', xp:100, tier:'bronze', prize:true},
+      {n:'Bronze 3', xp:150, tier:'bronze', prize:true},
+      {n:'Bronze 4', xp:200, tier:'bronze', prize:true},
+      {n:'Silver',   xp:250, tier:'silver', goal:true },
+    ]},
+  { id:2, eyebrow:'Journey 2 of 4', title:'THE SILVER ASCENT', sub:'Forge your legend',     earn:28,
+    nodes:[
+      {n:'Silver',   xp:250, tier:'silver', main:true },
+      {n:'Silver 1', xp:300, tier:'silver', prize:true},
+      {n:'Silver 2', xp:350, tier:'silver', prize:true},
+      {n:'Silver 3', xp:400, tier:'silver', prize:true},
+      {n:'Silver 4', xp:450, tier:'silver', prize:true},
+      {n:'Gold',     xp:500, tier:'gold',   goal:true },
+    ]},
+  { id:3, eyebrow:'Journey 3 of 4', title:'THE GOLDEN QUEST',  sub:"Claim what's yours",   earn:48,
+    nodes:[
+      {n:'Gold',     xp:500,  tier:'gold',     main:true },
+      {n:'Gold 1',   xp:600,  tier:'gold',     prize:true},
+      {n:'Gold 2',   xp:700,  tier:'gold',     prize:true},
+      {n:'Gold 3',   xp:800,  tier:'gold',     prize:true},
+      {n:'Gold 4',   xp:900,  tier:'gold',     prize:true},
+      {n:'Platinum', xp:1000, tier:'platinum', goal:true },
+    ]},
+  { id:4, eyebrow:'Journey 4 of 4', title:'THE PLATINUM RISE', sub:'Touch the summit',     earn:58,
+    nodes:[
+      {n:'Platinum',   xp:1000, tier:'platinum', main:true },
+      {n:'Platinum 1', xp:1100, tier:'platinum', prize:true},
+      {n:'Platinum 2', xp:1200, tier:'platinum', prize:true},
+      {n:'Platinum 3', xp:1300, tier:'platinum', prize:true},
+      {n:'Platinum 4', xp:1400, tier:'platinum', prize:true},
+      {n:'Sapphire',   xp:1500, tier:'sapphire', goal:true },
+    ]},
+];
+
+// Winding path node positions (% of map area w x h)
+const WPOS = [
+  {x:50, y:87},  // 0: start — bottom center
+  {x:21, y:72},  // 1: sub1 — left
+  {x:75, y:57},  // 2: sub2 — right
+  {x:23, y:42},  // 3: sub3 — left
+  {x:76, y:27},  // 4: sub4 — right
+  {x:50, y:12},  // 5: goal — top center
+];
+
+/* ══════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════ */
+let jIdx     = 0;   // current journey index
+let nIdx     = 0;   // current node index within journey
+let totalXP  = 0;
+let pCnt     = 0;   // prize type alternator (even=chest, odd=scratch)
+let jStartXP = 0;
+let jPrizes  = 0;
+let chestDone= false, scratchDone=false;
+
+/* ══════════════════════════════════════════════
+   BOOT
+══════════════════════════════════════════════ */
+window.addEventListener('load', () => {
+  drawStars();
+  setTimeout(() => loadJourney(0, false), 60);
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); earnXP(); }
+    if (e.code === 'Escape') closePrize();
+  });
+});
+
+/* ══════════════════════════════════════════════
+   STARS
+══════════════════════════════════════════════ */
+function drawStars() {
+  const c = document.getElementById('bg-canvas');
+  c.width = window.innerWidth; c.height = window.innerHeight;
+  const ctx = c.getContext('2d');
+  for (let i=0;i<260;i++) {
+    ctx.beginPath();
+    ctx.arc(Math.random()*c.width, Math.random()*c.height, Math.random()*1.4, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(255,255,255,${Math.random()*.55+.05})`; ctx.fill();
+  }
+}
+
+/* ══════════════════════════════════════════════
+   THEME
+══════════════════════════════════════════════ */
+function setTheme(tierKey) {
+  const t = TIERS[tierKey];
+  const r = document.documentElement.style;
+  r.setProperty('--accent', t.color);
+  r.setProperty('--glow',   t.glow);
+}
+
+/* ══════════════════════════════════════════════
+   LOAD JOURNEY
+══════════════════════════════════════════════ */
+function loadJourney(idx, animate=true) {
+  jIdx = idx; nIdx = 0;
+  jStartXP = totalXP; jPrizes = 0;
+  const j = JOURNEYS[idx];
+
+  setTheme(j.nodes[0].tier);
+  updateJourneyDots();
+  updateHero(j);
+  updateStepPips(j);
+  buildMap(j, animate);
+  updateHUD(j);
+  updateProgressStrip();
+
+  if (animate) {
+    document.getElementById('journey-view').classList.add('slide-in');
+    setTimeout(() => document.getElementById('journey-view').classList.remove('slide-in'), 600);
+  }
+}
+
+/* ══════════════════════════════════════════════
+   DOTS
+══════════════════════════════════════════════ */
+function updateJourneyDots() {
+  for (let i=0;i<4;i++) {
+    const d = document.getElementById(`jd${i}`);
+    d.className = 'j-dot';
+    if (i < jIdx) d.classList.add('done');
+    else if (i === jIdx) d.classList.add('active');
+  }
+}
+
+/* ══════════════════════════════════════════════
+   HERO
+══════════════════════════════════════════════ */
+function updateHero(j) {
+  const startTier = TIERS[j.nodes[0].tier];
+  const goalNode  = j.nodes[j.nodes.length-1];
+  const goalTier  = TIERS[goalNode.tier];
+
+  document.getElementById('j-eyebrow').textContent = j.eyebrow;
+  document.getElementById('j-title').textContent   = j.title;
+  document.getElementById('j-subtitle').textContent = j.sub;
+  document.getElementById('from-pill').textContent = `${startTier.icon} ${startTier.label}`;
+  document.getElementById('to-pill').textContent   = `${goalTier.icon} ${goalTier.label}`;
+  document.getElementById('to-pill').classList.remove('unlocked');
+  document.getElementById('earn-amt').textContent  = j.earn;
+}
+
+/* ══════════════════════════════════════════════
+   STEP PIPS
+══════════════════════════════════════════════ */
+function updateStepPips(j) {
+  const container = document.getElementById('j-steps');
+  container.innerHTML = '';
+  j.nodes.forEach((_, i) => {
+    const p = document.createElement('div');
+    p.className = 'step-pip'; p.id = `sp${i}`;
+    container.appendChild(p);
+  });
+  refreshStepPips();
+}
+
+function refreshStepPips() {
+  const j = JOURNEYS[jIdx];
+  j.nodes.forEach((_, i) => {
+    const p = document.getElementById(`sp${i}`);
+    if (!p) return;
+    p.className = 'step-pip';
+    if (i < nIdx) p.classList.add('done');
+    else if (i === nIdx) p.classList.add('active');
+  });
+}
+
+/* ══════════════════════════════════════════════
+   MAP BUILD
+══════════════════════════════════════════════ */
+function buildMap(j, animate) {
+  const mapArea = document.getElementById('map-area');
+  mapArea.querySelectorAll('.lnode').forEach(el => el.remove());
+  document.getElementById('map-svg').innerHTML = '';
+
+  requestAnimationFrame(() => {
+    const rect = mapArea.getBoundingClientRect();
+    const W = rect.width  || window.innerWidth;
+    const H = rect.height || window.innerHeight - 180;
+
+    const px = WPOS.map(p => ({ x: W*p.x/100, y: H*p.y/100 }));
+
+    drawPath(j, px);
+    j.nodes.forEach((node, i) => buildNode(mapArea, node, i, px[i]));
+    refreshNodeVisuals(j);
+
+    // Map glow
+    const t = TIERS[j.nodes[0].tier];
+    document.getElementById('map-glow').style.background =
+      `radial-gradient(ellipse 80% 55% at 50% 50%, ${t.glow}07, transparent 70%)`;
+  });
+}
+
+/* ── PATH ── */
+function drawPath(j, px) {
+  const svg = document.getElementById('map-svg');
+  const ns  = 'http://www.w3.org/2000/svg';
+  const t   = TIERS[j.nodes[0].tier];
+
+  const defs = document.createElementNS(ns,'defs');
+
+  // Gradient along path (bottom=tier color, top=glow)
+  const g = document.createElementNS(ns,'linearGradient');
+  g.id='pg'; g.setAttribute('gradientUnits','userSpaceOnUse');
+  g.setAttribute('x1', px[0].x); g.setAttribute('y1', px[0].y);
+  g.setAttribute('x2', px[5].x); g.setAttribute('y2', px[5].y);
+  [[0,'stop-color',t.color],[1,'stop-color',t.glow]].forEach(([i,attr,val]) => {
+    const s=document.createElementNS(ns,'stop');
+    s.setAttribute('offset',i===0?'0%':'100%'); s.setAttribute(attr,val); g.appendChild(s);
+  });
+  defs.appendChild(g);
+
+  // Glow filter
+  const f=document.createElementNS(ns,'filter'); f.id='gf';
+  const b=document.createElementNS(ns,'feGaussianBlur'); b.setAttribute('stdDeviation','4'); b.setAttribute('result','bl');
+  const m=document.createElementNS(ns,'feMerge');
+  ['bl','SourceGraphic'].forEach(v=>{ const mn=document.createElementNS(ns,'feMergeNode'); mn.setAttribute('in',v); m.appendChild(mn); });
+  f.appendChild(b); f.appendChild(m); defs.appendChild(f);
+  svg.appendChild(defs);
+
+  const d = curvePath(px);
+
+  // Dim bg path
+  const bg=document.createElementNS(ns,'path');
+  bg.setAttribute('d',d); bg.setAttribute('fill','none');
+  bg.setAttribute('stroke','rgba(255,255,255,.05)'); bg.setAttribute('stroke-width','9');
+  bg.setAttribute('stroke-linecap','round'); svg.appendChild(bg);
+
+  // Glow layer
+  const gp=document.createElementNS(ns,'path');
+  gp.id='gp'; gp.setAttribute('d',d); gp.setAttribute('fill','none');
+  gp.setAttribute('stroke','url(#pg)'); gp.setAttribute('stroke-width','14');
+  gp.setAttribute('stroke-linecap','round'); gp.setAttribute('filter','url(#gf)');
+  gp.setAttribute('opacity','0.38'); gp.setAttribute('stroke-dasharray','0 9999');
+  svg.appendChild(gp);
+
+  // Core path
+  const cp=document.createElementNS(ns,'path');
+  cp.id='cp'; cp.setAttribute('d',d); cp.setAttribute('fill','none');
+  cp.setAttribute('stroke','url(#pg)'); cp.setAttribute('stroke-width','3.5');
+  cp.setAttribute('stroke-linecap','round'); cp.setAttribute('stroke-dasharray','0 9999');
+  svg.appendChild(cp);
+
+  // Flow dots
+  const fp=document.createElementNS(ns,'path');
+  fp.id='fp'; fp.setAttribute('d',d); fp.setAttribute('fill','none');
+  fp.setAttribute('stroke','rgba(255,255,255,.45)'); fp.setAttribute('stroke-width','2');
+  fp.setAttribute('stroke-linecap','round'); fp.setAttribute('stroke-dasharray','5 34');
+  fp.setAttribute('opacity','0');
+  svg.appendChild(fp);
+
+  const sty=document.createElementNS(ns,'style');
+  sty.textContent=`#fp{animation:flow 2.4s linear infinite}@keyframes flow{from{stroke-dashoffset:0}to{stroke-dashoffset:-39}}`;
+  svg.appendChild(sty);
+}
+
+function curvePath(pts) {
+  let d=`M${pts[0].x} ${pts[0].y}`;
+  for(let i=1;i<pts.length;i++){
+    const p=pts[i-1],c=pts[i],mx=(p.x+c.x)/2;
+    d+=` C${mx} ${p.y} ${mx} ${c.y} ${c.x} ${c.y}`;
+  }
+  return d;
+}
+
+/* ── NODES ── */
+function buildNode(mapArea, node, i, pos) {
+  const tier = TIERS[node.tier];
+  const div  = document.createElement('div');
+  div.className = `lnode ${node.goal?'goal-node':node.main?'main-node':'sub-node'}`;
+  div.id = `nd${i}`;
+  div.style.left = pos.x+'px'; div.style.top = pos.y+'px';
+
+  // XP label
+  const xpl = document.createElement('div');
+  xpl.className = 'node-xp'; xpl.id=`nxp${i}`;
+  xpl.textContent = node.xp>=1000 ? (node.xp/1000).toFixed(1)+'k XP' : node.xp+' XP';
+
+  // Gem
+  const gw = document.createElement('div'); gw.className='gem-wrap';
+  const gm = document.createElement('div'); gm.className='gem locked'; gm.id=`gm${i}`;
+  const gi = document.createElement('div'); gi.className='gem-icon';
+  gi.textContent = (node.main||node.goal) ? tier.icon : '';
+  gm.appendChild(gi); gw.appendChild(gm);
+
+  // YOU badge on start node
+  if (i===0) {
+    const yb = document.createElement('div'); yb.className='you-badge'; yb.id='you-badge';
+    yb.textContent = '— YOU —'; gw.appendChild(yb);
+  }
+
+  div.appendChild(xpl); div.appendChild(gw);
+
+  // Name
+  const lbl=document.createElement('div'); lbl.className='node-name'; lbl.id=`nl${i}`;
+  lbl.textContent = node.goal ? `🏁 ${node.n}` : node.n;
+  div.appendChild(lbl);
+
+  mapArea.appendChild(div);
+}
+
+/* ══════════════════════════════════════════════
+   REFRESH NODE VISUALS
+══════════════════════════════════════════════ */
+function refreshNodeVisuals(j) {
+  j.nodes.forEach((node, i) => {
+    const gm = document.getElementById(`gm${i}`);
+    const nd = document.getElementById(`nd${i}`);
+    if (!gm||!nd) return;
+
+    gm.querySelectorAll('.check-badge,.prize-badge,.pulse-ring,.pulse-ring-2,.gem-lock-icon').forEach(e=>e.remove());
+    nd.classList.remove('active-node','reached');
+
+    if (node.goal) {
+      if (i <= nIdx) {
+        gm.className='gem goal-done'; nd.classList.add('reached');
+      } else {
+        gm.className='gem goal-locked';
+        const lk=document.createElement('div'); lk.className='gem-lock-icon'; lk.textContent='🔒'; gm.appendChild(lk);
+      }
+    } else if (i < nIdx) {
+      gm.className='gem done';
+      const ck=document.createElement('div'); ck.className='check-badge'; ck.textContent='✓'; gm.appendChild(ck);
+    } else if (i === nIdx) {
+      gm.className='gem active'; nd.classList.add('active-node');
+      const r1=document.createElement('div'); r1.className='pulse-ring'; gm.appendChild(r1);
+      const r2=document.createElement('div'); r2.className='pulse-ring-2'; gm.appendChild(r2);
+    } else {
+      gm.className='gem locked';
+      if (node.prize) {
+        const pb=document.createElement('div'); pb.className='prize-badge'; pb.textContent='?'; gm.appendChild(pb);
+      }
+    }
+  });
+
+  refreshStepPips();
+  refreshPath(j);
+}
+
+function refreshPath(j) {
+  const cp=document.getElementById('cp');
+  const gp=document.getElementById('gp');
+  const fp=document.getElementById('fp');
+  if (!cp) return;
+
+  requestAnimationFrame(() => {
+    const total = cp.getTotalLength();
+    if (!total||!isFinite(total)) return;
+
+    const cur = j.nodes[nIdx];
+    const nxt = nIdx+1 < j.nodes.length ? j.nodes[nIdx+1] : null;
+    let prog = nIdx;
+    if (nxt && nxt.xp > cur.xp)
+      prog += Math.min((totalXP - cur.xp)/(nxt.xp - cur.xp), 1);
+
+    const done = total * Math.min(prog/(j.nodes.length-1), 1);
+    const da = `${done} ${total}`;
+    cp.setAttribute('stroke-dasharray',da);
+    gp.setAttribute('stroke-dasharray',da);
+    fp.setAttribute('opacity', done>45?'0.45':'0');
+  });
+}
+
+/* ══════════════════════════════════════════════
+   HUD
+══════════════════════════════════════════════ */
+function updateHUD(j) {
+  if (!j) j = JOURNEYS[jIdx];
+  const node = j.nodes[nIdx];
+  const nxt  = nIdx+1 < j.nodes.length ? j.nodes[nIdx+1] : null;
+  const tier = TIERS[node.tier];
+
+  setTheme(node.tier);
+
+  document.getElementById('h-curlv').textContent = node.n;
+  document.getElementById('h-tier').textContent  = tier.label;
+  document.getElementById('ft-xp').innerHTML = `${totalXP.toLocaleString()} <span>XP</span>`;
+
+  if (nxt) {
+    const pct = nxt.xp>node.xp ? Math.max(0,Math.min(100,(totalXP-node.xp)/(nxt.xp-node.xp)*100)) : 100;
+    document.getElementById('xp-fill').style.width = pct+'%';
+    document.getElementById('h-nxt').textContent =
+      `${totalXP.toLocaleString()} / ${nxt.xp.toLocaleString()} → ${nxt.n}`;
+  } else {
+    document.getElementById('xp-fill').style.width = '100%';
+    document.getElementById('h-nxt').textContent = '🏆 Journey Complete!';
+  }
+}
+
+function updateProgressStrip() {
+  // Overall progress: 0 XP (start) to 1500 XP (Sapphire)
+  const pct = Math.min(totalXP/1500*100, 100);
+  document.getElementById('progress-strip').style.width = pct+'%';
+}
+
+/* ══════════════════════════════════════════════
+   EARN XP
+══════════════════════════════════════════════ */
+function earnXP() {
+  const j = JOURNEYS[jIdx];
+  floatXP(j.earn);
+  totalXP += j.earn;
+  advance(j);
+  refreshNodeVisuals(j);
+  updateHUD(j);
+  updateProgressStrip();
+}
+
+function advance(j) {
+  while (nIdx+1 < j.nodes.length && totalXP >= j.nodes[nIdx+1].xp) {
+    nIdx++;
+    const reached = j.nodes[nIdx];
+    showToast(reached.n, reached.prize ? 'Mystery prize unlocked! 🎁' : (reached.goal ? `${TIERS[reached.tier].label} tier unlocked! 🏆` : ''));
+    if (reached.prize) { jPrizes++; setTimeout(() => showPrize(reached), 900); }
+    if (reached.goal) {
+      document.getElementById('to-pill').classList.add('unlocked');
+      const delay = reached.prize ? 3200 : 1400;
+      setTimeout(() => showJourneyComplete(j), delay);
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════════ */
+function showToast(name, sub) {
+  const el=document.getElementById('toast');
+  document.getElementById('t-main').textContent = `⬆ ${name} Reached!`;
+  document.getElementById('t-sub').textContent  = sub||'';
+  document.getElementById('t-sub').style.display = sub?'block':'none';
+  el.classList.add('show');
+  burst();
+  setTimeout(()=>el.classList.remove('show'),2600);
+}
+
+/* ══════════════════════════════════════════════
+   MYSTERY PRIZE
+══════════════════════════════════════════════ */
+function showPrize(node) {
+  const tier  = TIERS[node.tier];
+  const prize = tier.prizes[Math.floor(Math.random()*tier.prizes.length)];
+  const chest = (pCnt%2===0); pCnt++;
+
+  chestDone=false; scratchDone=false;
+
+  document.getElementById('p-title').textContent = node.n;
+  document.getElementById('p-level').textContent = `You've unlocked ${node.n}!`;
+  const pr=document.getElementById('p-result');
+  pr.textContent=''; pr.classList.remove('show');
+  document.getElementById('p-result-sub').textContent='';
+  document.getElementById('p-claim').classList.remove('show');
+
+  if (chest) {
+    document.getElementById('chest-zone').style.display='block';
+    document.getElementById('scratch-zone').style.display='none';
+    resetChest(tier);
+    window._cp = prize; window._ct = tier;
+  } else {
+    document.getElementById('chest-zone').style.display='none';
+    document.getElementById('scratch-zone').style.display='block';
+    document.getElementById('s-icon').textContent  = tier.icon+' 🎁';
+    document.getElementById('s-prize').textContent = prize;
+    document.getElementById('s-prize').style.color = tier.glow;
+    initScratch(prize, tier);
+  }
+
+  document.getElementById('prize-modal').classList.add('open');
+}
+
+/* ── Chest ── */
+function resetChest(tier) {
+  document.getElementById('c-lid').classList.remove('open');
+  const gl=document.getElementById('c-glow');
+  gl.classList.remove('show');
+  gl.style.background='';
+}
+
+function openChest() {
+  if (chestDone) return; chestDone=true;
+  document.getElementById('c-lid').classList.add('open');
+  const gl=document.getElementById('c-glow');
+  gl.style.background=`radial-gradient(circle,${window._ct.glow}dd,${window._ct.glow}44,transparent)`;
+  gl.classList.add('show');
+  setTimeout(()=>{
+    const pr=document.getElementById('p-result');
+    pr.textContent='🎁 '+window._cp; pr.classList.add('show');
+    document.getElementById('p-result-sub').textContent='Your mystery chest has been revealed!';
+    document.getElementById('p-claim').classList.add('show');
+    burst();
+  },720);
+}
+
+/* ── Scratch ── */
+function initScratch(prize, tier) {
+  const area=document.getElementById('scratch-area');
+  const old=document.getElementById('scratch-canvas');
+  const c=old.cloneNode(false); old.replaceWith(c);
+  c.width=area.clientWidth||280; c.height=area.clientHeight||120;
+  const ctx=c.getContext('2d');
+
+  const g=ctx.createLinearGradient(0,0,c.width,c.height);
+  g.addColorStop(0,tier.color+'BB'); g.addColorStop(.5,tier.glow+'99'); g.addColorStop(1,tier.color+'BB');
+  ctx.fillStyle=g; ctx.fillRect(0,0,c.width,c.height);
+  ctx.fillStyle='rgba(0,0,0,.5)';
+  ctx.font='bold 13px Space Grotesk,sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText('✨  SCRATCH HERE  ✨',c.width/2,c.height/2+5);
+
+  let drawing=false;
+  const scratch=(cx,cy)=>{
+    ctx.globalCompositeOperation='destination-out';
+    ctx.beginPath(); ctx.arc(cx,cy,22,0,Math.PI*2); ctx.fill();
+    if (!scratchDone) {
+      const d=ctx.getImageData(0,0,c.width,c.height).data;
+      let cl=0; for(let i=3;i<d.length;i+=4) if(d[i]<100) cl++;
+      if(cl/(d.length/4)>0.42) {
+        scratchDone=true; ctx.clearRect(0,0,c.width,c.height);
+        const pr=document.getElementById('p-result');
+        pr.textContent=prize; pr.classList.add('show');
+        document.getElementById('p-result-sub').textContent='Scratch card revealed!';
+        document.getElementById('p-claim').classList.add('show');
+        burst();
+      }
+    }
+  };
+  const getPos=(e,r)=>({x:e.clientX-r.left,y:e.clientY-r.top});
+  c.addEventListener('mousedown',e=>{drawing=true;const r=c.getBoundingClientRect();scratch(...Object.values(getPos(e,r)));});
+  c.addEventListener('mouseup',()=>drawing=false);
+  c.addEventListener('mouseleave',()=>drawing=false);
+  c.addEventListener('mousemove',e=>{if(!drawing)return;const r=c.getBoundingClientRect();scratch(...Object.values(getPos(e,r)));});
+  c.addEventListener('touchstart',e=>{e.preventDefault();drawing=true;},{passive:false});
+  c.addEventListener('touchend',e=>{e.preventDefault();drawing=false;},{passive:false});
+  c.addEventListener('touchmove',e=>{
+    e.preventDefault();if(!drawing)return;
+    const r=c.getBoundingClientRect(),t=e.touches[0];
+    scratch(t.clientX-r.left,t.clientY-r.top);
+  },{passive:false});
+}
+
+function closePrize() {
+  document.getElementById('prize-modal').classList.remove('open');
+}
+
+/* ══════════════════════════════════════════════
+   JOURNEY COMPLETE
+══════════════════════════════════════════════ */
+function showJourneyComplete(j) {
+  const goal = j.nodes[j.nodes.length-1];
+  const gt   = TIERS[goal.tier];
+  const xpEarned = totalXP - jStartXP;
+  const isLast   = j.id === 4;
+
+  setTheme(goal.tier);
+
+  document.getElementById('jc-icon').textContent = gt.icon;
+  document.getElementById('jc-heading').textContent = `${gt.label.toUpperCase()} UNLOCKED`;
+  document.getElementById('jc-sub').textContent = `You've ascended to ${gt.label} tier!`;
+  document.getElementById('jc-xp').textContent = xpEarned.toLocaleString();
+  document.getElementById('jc-prizes').textContent = jPrizes;
+  document.getElementById('jc-next').textContent = j.id+1;
+  document.getElementById('jc-cta').style.display = isLast ? 'none' : '';
+  document.getElementById('jc-final').style.display = isLast ? 'block' : 'none';
+
+  document.getElementById('jc-overlay').classList.add('open');
+  burst(); setTimeout(burst, 300); setTimeout(burst, 600);
+}
+
+function nextJourney() {
+  document.getElementById('jc-overlay').classList.remove('open');
+  if (jIdx+1 < JOURNEYS.length) setTimeout(()=>loadJourney(jIdx+1, true), 350);
+}
+
+function restart() {
+  jIdx=0; nIdx=0; totalXP=0; pCnt=0;
+  document.getElementById('jc-overlay').classList.remove('open');
+  document.getElementById('prize-modal').classList.remove('open');
+  setTimeout(()=>loadJourney(0, true), 350);
+}
+
+/* ══════════════════════════════════════════════
+   PARTICLES
+══════════════════════════════════════════════ */
+function burst() {
+  const pc=document.getElementById('particles');
+  const t=TIERS[JOURNEYS[jIdx].nodes[nIdx]?.tier||JOURNEYS[jIdx].nodes[0].tier];
+  const cx=window.innerWidth/2, cy=window.innerHeight/2;
+  const cols=[t.color,t.glow,'#fff',t.color,t.glow];
+  for(let i=0;i<38;i++){
+    const el=document.createElement('div');
+    const sz=Math.random()*9+3, ang=Math.random()*Math.PI*2;
+    const dist=Math.random()*230+50, dur=Math.random()*1.2+.6;
+    const col=cols[Math.floor(Math.random()*cols.length)];
+    el.style.cssText=`position:absolute;border-radius:50%;width:${sz}px;height:${sz}px;
+      left:${cx}px;top:${cy}px;background:${col};box-shadow:0 0 ${sz}px ${col};pointer-events:none;`;
+    pc.appendChild(el);
+    el.animate([
+      {transform:'translate(0,0) scale(1)',opacity:1},
+      {transform:`translate(${Math.cos(ang)*dist}px,${Math.sin(ang)*dist}px) scale(0)`,opacity:0}
+    ],{duration:dur*1000,easing:'ease-out',fill:'forwards'});
+    setTimeout(()=>el.remove(),dur*1000);
+  }
+}
+
+/* ══════════════════════════════════════════════
+   FLOATING XP
+══════════════════════════════════════════════ */
+function floatXP(amt) {
+  const el=document.createElement('div'); el.className='xp-float';
+  el.style.left=(window.innerWidth/2+(Math.random()*70-35))+'px';
+  el.style.top=(window.innerHeight-90)+'px';
+  el.textContent=`+${amt} XP`;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),1400);
+}
+</script>
+</body>
+</html>
